@@ -1,16 +1,23 @@
-import { useState } from 'react'
-import './App.css'
-import MultiEmailSender from './components/MultiEmailSender'
+import React from 'react';
+import { Toaster } from 'react-hot-toast';
+import EmailSender from './components/EmailSender';
+import { ThemeProvider, createTheme } from '@mui/material';
+
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+  },
+});
 
 function App() {
-
   return (
-    
-    <div className='App'>
-      <MultiEmailSender />
-    </div>
-  
-  )
+    <ThemeProvider theme={theme}>
+      <Toaster position="top-right" />
+      <EmailSender />
+    </ThemeProvider>
+  );
 }
 
-export default App
+export default App;

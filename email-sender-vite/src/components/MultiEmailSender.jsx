@@ -16,19 +16,36 @@ const MultiEmailSender = () => {
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.innerHTML = message;
+      // Apply initial styles
+      applyEditorStyles(editorRef.current);
     }
   }, []);
+
+  const applyEditorStyles = (element) => {
+    // Apply styles to the element and all its children
+    const applyStyles = (el) => {
+      if (el.nodeType === 1) { // Element node
+        el.style.writingMode = 'horizontal-tb';
+        el.style.direction = 'ltr';
+        el.style.textOrientation = 'mixed';
+        el.style.textAlign = 'left';
+        el.style.transform = 'scale(1, 1)';
+        
+        // Apply to all children
+        Array.from(el.children).forEach(applyStyles);
+      }
+    };
+    applyStyles(element);
+  };
   
   const sanitizeHtml = (html) => {
-    // Stronger approach - extract just the text and rebuild
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = html;
     
-    // Get just the text content
-    const textContent = tempDiv.textContent || tempDiv.innerText;
+    // Apply styles to ensure correct text direction
+    applyEditorStyles(tempDiv);
     
-    // Completely rebuild with strong direction control
-    return `<div style="direction: ltr !important; unicode-bidi: isolate !important; text-align: left !important;">${textContent}</div>`;
+    return tempDiv.innerHTML;
   };
   
   // Update message state when editor content changes
@@ -37,10 +54,19 @@ const MultiEmailSender = () => {
       const sanitizedHtml = sanitizeHtml(editorRef.current.innerHTML);
       setMessage(sanitizedHtml);
       
-      // Optionally update the editor with the sanitized content if needed
-      if (sanitizedHtml !== editorRef.current.innerHTML) {
-        editorRef.current.innerHTML = sanitizedHtml;
-      }
+      // Preserve cursor position
+      const selection = window.getSelection();
+      const range = selection.getRangeAt(0);
+      
+      // Update content
+      editorRef.current.innerHTML = sanitizedHtml;
+      
+      // Reapply styles
+      applyEditorStyles(editorRef.current);
+      
+      // Restore cursor position
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
   };
   
@@ -128,7 +154,7 @@ const MultiEmailSender = () => {
       // Add image files
       images.forEach(img => {
         if (img.file) {
-          formData.append('images', img.file);
+          formData.append('image', img.file);
         }
       });
 
@@ -174,43 +200,6 @@ const MultiEmailSender = () => {
   const isFormValid = () => {
     return recipients.some(r => r.valid) && subject && message;
   };
-
-
-  const forceCharacterLTR = () => {
-    if (editorRef.current) {
-      const text = editorRef.current.innerText;
-      // Split into individual characters and reassemble
-      const processedText = Array.from(text).join('\u200C'); // Add zero-width non-joiner between each character
-      
-      // Replace the content
-      editorRef.current.innerHTML = '';
-      editorRef.current.innerText = processedText;
-      handleEditorChange();
-    }
-  };
-  // Update your resetTextDirection function
-  const resetTextDirection = () => {
-    if (editorRef.current) {
-      // Get current text
-      const text = editorRef.current.innerText;
-      
-      // Clear the editor
-      editorRef.current.innerHTML = '';
-      
-      // Add each character individually to prevent grouping
-      Array.from(text).forEach(char => {
-        const span = document.createElement('span');
-        span.innerText = char;
-        span.style.direction = 'ltr';
-        editorRef.current.appendChild(span);
-      });
-      
-      handleEditorChange();
-    }
-  };
-
-
-
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-md">
@@ -333,13 +322,6 @@ const MultiEmailSender = () => {
           >
             U
           </button>
-          <button 
-            onClick={resetTextDirection}
-            className="px-2 py-1 mr-1 border border-gray-300 rounded"
-            title="Fix Direction"
-          >
-            Fix Text Direction
-          </button>
           
           {/* Divider */}
           <div className="h-6 w-px bg-gray-300 mx-2"></div>
@@ -442,15 +424,20 @@ const MultiEmailSender = () => {
           </button>
         </div>
         
-        {/* Editable Content Area - With Direction Fixes */}
+        {/* Editable Content Area */}
         <div 
           ref={editorRef}
           contentEditable
-          dir="ltr" 
           className="min-h-[200px] max-h-[500px] overflow-y-auto p-3 border border-gray-300 rounded-b-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           onInput={handleEditorChange}
           onBlur={handleEditorChange}
-          style={{ unicodeBidi: 'embed', direction: 'ltr' }}
+          style={{
+            writingMode: 'horizontal-tb',
+            direction: 'ltr',
+            textOrientation: 'mixed',
+            textAlign: 'left',
+            transform: 'scale(1, 1)'
+          }}
           dangerouslySetInnerHTML={{ __html: message }}
         />
         

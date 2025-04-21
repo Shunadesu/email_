@@ -6,214 +6,224 @@ const nodemailer = require('nodemailer');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
+require('dotenv').config();
 
 // Create Express app
 const app = express();
 
+// Enable CORS and JSON parsing
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type']
+}));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/'); // Store uploads in the 'uploads' directory
+  destination: (req, file, cb) => {
+    const uploadDir = 'uploads';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir);
+    }
+    cb(null, uploadDir);
   },
-  filename: function (req, file, cb) {
-    // Create unique filenames with original extension
-    cb(null, `${Date.now()}-${path.basename(file.originalname)}`);
+  filename: (req, file, cb) => {
+    // Keep original filename but make it unique
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    const name = path.basename(file.originalname, ext);
+    cb(null, `${name}-${uniqueSuffix}${ext}`);
   }
 });
 
-// Set up multer middleware with file filter for images
-const upload = multer({
-  storage: storage,
+// Configure multer to handle both content images and attachments
+const upload = multer({ 
+  storage,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit per file
-  },
-  fileFilter: function (req, file, cb) {
-    // Accept only image files
-    if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('Only image files are allowed!'), false);
-    }
-    cb(null, true);
+    fileSize: 25 * 1024 * 1024, // 25MB limit per file
+    files: 20 // Maximum 20 files total
   }
-});
+}).fields([
+  { name: 'contentImage', maxCount: 10 }, // For images embedded in content
+  { name: 'attachment', maxCount: 10 }    // For file attachments
+]);
 
-// Enable CORS and JSON parsing
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Ensure uploads directory exists
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
-}
-
-// Endpoint for sending emails with images and HTML formatting
-app.post('/api/send-emails', upload.array('images'), async (req, res) => {
+// Email sending endpoint
+app.post('/api/send-email', upload, async (req, res) => {
   try {
-    // Get form data
-    let recipients = req.body.recipients;
-    const subject = req.body.subject;
-    let message = req.body.message;
-    const files = req.files || []; // Uploaded files
-    const embedImages = req.body.embedImages === 'true'; // Check if images should be embedded
-    const isHtmlFormat = req.body.htmlFormat === 'true'; // Check if message is HTML formatted
+    // Parse the emailData from the request
+    const emailData = JSON.parse(req.body.emailData);
+    const { recipients, subject, content } = emailData;
     
-    console.log("Message format:", isHtmlFormat ? "HTML" : "Plain text");
-    
-    // Ensure recipients is always an array
-    if (!Array.isArray(recipients)) {
-      recipients = [recipients];
-    }
-    
+    // Get files from both fields
+    const contentImages = req.files['contentImage'] || [];
+    const attachments = req.files['attachment'] || [];
+
+    console.log('Received files:', {
+      contentImages: contentImages.map(f => f.originalname),
+      attachments: attachments.map(f => f.originalname)
+    });
+
     // Validate inputs
-    if (!recipients || recipients.length === 0 || !subject || !message) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Missing required fields' 
+    if (!recipients || !subject || !content) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
       });
     }
-    
+
+    // Parse recipients
+    const emailList = Array.isArray(recipients) ? recipients : [recipients];
+
     // Create email transporter
     const transporter = nodemailer.createTransport({
-      service: 'gmail', // common options: gmail, outlook, yahoo, etc.
+      service: 'gmail',
       auth: {
-      user: 'namp280918@gmail.com', 
-        pass: 'jawv mfom kepg lkmt',
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
       }
     });
-    
-    // Process images - either as attachments or inline embedded images
-    let attachments = [];
-    let htmlMessage = isHtmlFormat ? message : message.replace(/\n/g, '<br>');
-    
-    if (files.length > 0) {
-      if (embedImages) {
-        // For embedded images in the email body
-        if (!isHtmlFormat) {
-          // If the message is not already HTML, wrap it
-          htmlMessage += '<div style="margin-top: 20px;">';
-        } else {
-          // If it's already HTML, find the closing body tag or add to the end
-          const bodyCloseIndex = htmlMessage.toLowerCase().indexOf('</body>');
-          if (bodyCloseIndex !== -1) {
-            // Insert before closing body tag
-            htmlMessage = htmlMessage.substring(0, bodyCloseIndex) + 
-                          '<div style="margin-top: 20px;">' +
-                          htmlMessage.substring(bodyCloseIndex);
-          } else {
-            // Add to the end
-            htmlMessage += '<div style="margin-top: 20px;">';
-          }
-        }
-        
-        files.forEach((file, index) => {
-          // Generate a unique content ID for each image
-          const contentId = `image-${index}-${crypto.randomBytes(10).toString('hex')}`;
-          
-          // Add image to the HTML content
-          htmlMessage += `<div style="margin-bottom: 15px;">
-            <img src="cid:${contentId}" alt="Embedded Image ${index + 1}" style="max-width: 100%; height: auto;" />
-          </div>`;
-          
-          // Add the image as an embedded attachment
-          attachments.push({
-            filename: path.basename(file.originalname),
-            path: file.path,
-            cid: contentId, // Content ID referenced in the HTML
-            contentDisposition: 'inline'
-          });
-        });
-        
-        htmlMessage += '</div>';
-        
-        if (!isHtmlFormat) {
-          // Close any wrapper elements if not already HTML
-          htmlMessage += '</div>';
-        } else {
-          // Close the div we added
-          const bodyCloseIndex = htmlMessage.toLowerCase().indexOf('</body>');
-          if (bodyCloseIndex !== -1) {
-            // Insert closing div before closing body tag
-            htmlMessage = htmlMessage.substring(0, bodyCloseIndex) + 
-                          '</div>' +
-                          htmlMessage.substring(bodyCloseIndex);
-          } else {
-            // Add to the end
-            htmlMessage += '</div>';
-          }
-        }
-      } else {
-        // Regular attachments (not embedded)
-        attachments = files.map(file => ({
-          filename: path.basename(file.originalname),
-          path: file.path,
-          contentType: file.mimetype
-        }));
-      }
-    }
-    
-    // If HTML content was sent, fix any potential RTL issues
-    if (isHtmlFormat) {
-      // Force LTR direction on all content
-      htmlMessage = `<div dir="ltr" style="direction: ltr; unicode-bidi: embed;">${htmlMessage}</div>`;
-    }
-    
-    // Send emails to all recipients
-    const emailPromises = recipients.map(recipient => {
-      const mailOptions = {
-        from: 'your-email@gmail.com', // YOUR EMAIL ADDRESS HERE (same as above)
-        to: recipient,
-        subject: subject,
-        text: isHtmlFormat ? htmlToText(message) : message, // Plain text version
-        html: htmlMessage, // HTML version
-        attachments: attachments
+
+    // Handle content images (inline)
+    const cidMap = new Map();
+    const inlineAttachments = contentImages.map(file => {
+      const cid = `img_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      cidMap.set(file.originalname, cid);
+      return {
+        filename: file.originalname,
+        path: file.path,
+        cid: cid,
+        contentType: file.mimetype,
+        contentDisposition: 'inline'
       };
-      
-      return transporter.sendMail(mailOptions);
     });
+
+    // Handle regular attachments
+    const fileAttachments = attachments.map(file => ({
+      filename: file.originalname,
+      path: file.path,
+      contentType: file.mimetype,
+      contentDisposition: 'attachment'
+    }));
+
+    // Replace image sources in the content with CIDs
+    let modifiedContent = content;
+    const imgRegex = /<img[^>]+src="[^"]+"/g;
+    const matches = content.match(imgRegex) || [];
     
-    // Wait for all emails to be sent
-    const results = await Promise.all(emailPromises);
-    
-    // Return success response
-    res.status(200).json({ 
-      success: true, 
-      message: `Emails sent successfully to ${recipients.length} recipients`,
-      details: results.map(r => r.messageId)
+    matches.forEach((imgTag, index) => {
+      if (index < contentImages.length) {
+        const file = contentImages[index];
+        const cid = cidMap.get(file.originalname);
+        // Replace the entire img tag while preserving other attributes and wrap with custom class
+        modifiedContent = modifiedContent.replace(
+          imgTag,
+          `<div class="email-image-container" style="margin: 10px 0; text-align: center;">
+            ${imgTag.replace(
+              /src="[^"]+"/,
+              `src="cid:${cid}" style="max-width: 100%; height: auto; display: block; margin: 0 auto;"`
+            )}
+          </div>`
+        );
+      }
     });
-    
+
+    // Add base styling for the email content
+    const styledContent = `
+      <div style="
+        max-width: ${emailData.design?.maxWidth || '600px'};
+        margin: 0 auto;
+        background-color: ${emailData.design?.backgroundColor || '#ffffff'};
+        padding: ${emailData.design?.padding || '20px'};
+        border: ${emailData.design?.borderWidth || '1px'} ${emailData.design?.borderStyle || 'solid'} ${emailData.design?.borderColor || '#e0e0e0'};
+        border-radius: ${emailData.design?.borderRadius || '8px'};
+        font-family: ${emailData.design?.fontFamily || 'Arial, sans-serif'};
+        line-height: 1.5;
+        color: #333;
+      ">
+        <style>
+          .email-image-container {
+            margin: 10px 0;
+            text-align: start;
+            width: 100%;
+            position: relative;
+          }
+          .email-image-container img {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            display: block;
+          }
+        </style>
+        <div style="width: 80%; margin: 0 auto;">
+          ${modifiedContent}
+        </div>
+      </div>
+    `;
+
+    // Log for debugging
+    console.log('Sending email with:', {
+      contentImages: inlineAttachments.map(a => a.filename),
+      attachments: fileAttachments.map(a => a.filename),
+      cidMap: Object.fromEntries(cidMap)
+    });
+
+    // Send emails
+    const results = await Promise.all(emailList.map(email => {
+      return transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,
+        subject,
+        html: styledContent,
+        attachments: [
+          ...inlineAttachments,
+          ...fileAttachments
+        ]
+      });
+    }));
+
+    // Cleanup uploaded files
+    [...contentImages, ...attachments].forEach(file => {
+      fs.unlink(file.path, err => {
+        if (err) console.error('Error deleting file:', err);
+      });
+    });
+
+    res.json({
+      success: true,
+      message: `Emails sent successfully to ${emailList.length} recipients`,
+      results: results.map(r => r.messageId)
+    });
+
   } catch (error) {
     console.error('Error sending emails:', error);
     
-    // Return error response
-    res.status(500).json({ 
-      success: false, 
+    // Cleanup any uploaded files in case of error
+    if (req.files) {
+      Object.values(req.files).flat().forEach(file => {
+        fs.unlink(file.path, err => {
+          if (err) console.error('Error deleting file:', err);
+        });
+      });
+    }
+
+    res.status(500).json({
+      success: false,
       message: 'Failed to send emails',
-      error: error.message 
+      error: error.message
     });
   }
 });
-
-// Helper function to convert HTML to plain text (basic version)
-function htmlToText(html) {
-  return html
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/&nbsp;/g, ' ') // Replace non-breaking spaces
-    .replace(/&amp;/g, '&') // Replace ampersands
-    .replace(/&lt;/g, '<') // Replace less than
-    .replace(/&gt;/g, '>') // Replace greater than
-    .trim(); // Trim whitespace
-}
 
 // Start the server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Make sure to update the email configuration in the code!`);
+  console.log(`Make sure to set up your email configuration in the .env file!`);
 });
 
 
 
 
-// user: 'namp280918@gmail.com', 
-// pass: 'jawv mfom kepg lkmt',
