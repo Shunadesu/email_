@@ -68,64 +68,137 @@ const EmailSender = () => {
   // Custom styles for components
   const styles = {
     container: {
-      maxWidth: '1200px',
+      height: 'calc(100vh - 2rem)', // Trừ đi padding của container cha
+      maxWidth: '1400px',
       margin: '0 auto',
-      padding: theme.spacing(3),
     },
     paper: {
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
       borderRadius: theme.spacing(2),
       overflow: 'hidden',
       boxShadow: theme.shadows[3],
     },
     header: {
-      padding: theme.spacing(3),
-      background: alpha(theme.palette.primary.main, 0.05),
+      padding: theme.spacing(2, 4),
+      background: `linear-gradient(to right, ${alpha(theme.palette.primary.main, 0.05)}, ${alpha(theme.palette.primary.main, 0.1)})`,
       borderBottom: `1px solid ${theme.palette.divider}`,
+      flexShrink: 0, // Prevent header from shrinking
     },
     content: {
       padding: theme.spacing(3),
+      height: '100%',
+      overflow: 'hidden', // Hide overflow
+    },
+    mainContentWrapper: {
+      display: 'flex',
+      gap: 3,
+      height: '100%',
+      overflow: 'hidden',
+    },
+    leftSide: {
+      flex: 1,
+      minWidth: 0,
+      overflow: 'auto', // Enable scrolling
+      paddingRight: theme.spacing(2),
+    },
+    rightSide: {
+      width: '45%',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
     },
     section: {
-      marginBottom: theme.spacing(4),
+      marginBottom: theme.spacing(3),
+      '& .MuiTypography-subtitle1': {
+        marginBottom: theme.spacing(1.5),
+        color: theme.palette.text.primary,
+        fontWeight: 600,
+      }
     },
     recipientContainer: {
       display: 'flex',
-      gap: theme.spacing(1),
+      gap: theme.spacing(1.5),
       alignItems: 'center',
-      marginBottom: theme.spacing(1),
+      marginBottom: theme.spacing(1.5),
     },
     addRecipientButton: {
       marginTop: theme.spacing(1),
     },
     designControls: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-      gap: theme.spacing(2),
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: theme.spacing(2.5),
       marginTop: theme.spacing(2),
     },
     messageContainer: {
       border: `1px solid ${theme.palette.divider}`,
       borderRadius: theme.shape.borderRadius,
       overflow: 'hidden',
+      '& .ql-container': {
+        height: '250px', // Fixed height for editor
+      }
     },
     previewContainer: {
-      position: 'sticky',
-      top: theme.spacing(3),
-      maxHeight: 'calc(100vh - 48px)',
-      overflowY: 'auto',
+      flex: 1,
+      overflow: 'auto',
       padding: theme.spacing(2),
       backgroundColor: alpha(theme.palette.background.paper, 0.5),
       borderRadius: theme.shape.borderRadius,
       backdropFilter: 'blur(8px)',
+      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
     },
     attachmentChip: {
       margin: theme.spacing(0.5),
     },
     sendButton: {
-      marginTop: theme.spacing(3),
-      padding: theme.spacing(1.5),
+      marginTop: theme.spacing(4),
+      padding: theme.spacing(1.5, 4),
+      fontWeight: 600,
+      fontSize: '1rem',
     },
   };
+
+  // Thêm custom styles cho Quill editor
+  const customStyles = `
+    .ql-editor {
+      font-size: 16px;
+      line-height: 1.6;
+      padding: 20px;
+    }
+    
+    .ql-toolbar {
+      padding: 12px !important;
+    }
+    
+    .ql-formats button {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .ql-editor img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 16px auto;
+    }
+    
+    .ql-editor p {
+      margin-bottom: 1em;
+    }
+    
+    .ql-snow .ql-picker {
+      height: 32px;
+    }
+    
+    .ql-snow .ql-stroke {
+      stroke-width: 1.5;
+    }
+  `;
 
   // Modified image handler for content images
   const imageHandler = () => {
@@ -381,57 +454,6 @@ const EmailSender = () => {
     }
   };
 
-  const customStyles = `
-    .message-container {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      background: white;
-      border: 1px solid ${theme.palette.divider};
-      border-radius: ${theme.shape.borderRadius}px;
-      max-width: 600px;
-      margin: 0 auto;
-      overflow: hidden;
-    }
-    .ql-editor {
-      min-height: 200px;
-      font-size: 16px;
-      padding: 16px;
-      width: 100%;
-    }
-    .ql-editor img {
-      max-width: 100%;
-      height: auto;
-      display: block;
-      margin: 10px auto;
-      border-radius: 4px;
-    }
-    .ql-container {
-      border: none !important;
-      font-family: inherit;
-    }
-    .ql-toolbar {
-      border: none !important;
-      border-bottom: 1px solid ${theme.palette.divider} !important;
-      background: ${alpha(theme.palette.background.paper, 0.8)};
-      backdrop-filter: blur(8px);
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      width: 100%;
-    }
-    .ql-formats {
-      margin-right: 12px !important;
-    }
-    .ql-formats button {
-      width: 28px;
-      height: 28px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-  `;
-
   // Preview component for inline images
   const InlineImagePreview = ({ dataUrl, name, onDelete }) => (
     <Box sx={{ 
@@ -471,38 +493,48 @@ const EmailSender = () => {
             <Typography variant="h5" gutterBottom>
               Email Composer
             </Typography>
-            <Typography variant="body2" color="textSecondary">
-              Create and send beautiful emails with ease
+            <Typography variant="body2" color="text.secondary">
+              Create and send professional emails with our advanced editor
             </Typography>
           </Box>
 
-          {/* Main content area */}
+          {/* Main Content */}
           <Box sx={styles.content}>
-            <Box sx={{ display: 'flex', gap: 3 }}>
+            <Box sx={styles.mainContentWrapper}>
               {/* Left side - Editor and controls */}
-              <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Box sx={styles.leftSide}>
                 {/* Recipients Section */}
                 <Box sx={styles.section}>
-                  <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                  <Typography variant="subtitle1">
                     Recipients
                   </Typography>
                   {recipients.map((email, index) => (
                     <Box key={index} sx={styles.recipientContainer}>
                       <TextField
                         fullWidth
-                        size="small"
+                        size="medium"
                         type="email"
                         value={email}
                         onChange={(e) => handleEmailChange(index, e.target.value)}
                         error={email && !validateEmail(email)}
-                        helperText={email && !validateEmail(email) ? 'Invalid email' : ''}
+                        helperText={email && !validateEmail(email) ? 'Invalid email format' : ''}
                         placeholder="recipient@example.com"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            backgroundColor: 'background.paper',
+                          }
+                        }}
                       />
                       {recipients.length > 1 && (
                         <IconButton 
                           color="error" 
                           onClick={() => removeRecipient(index)}
-                          size="small"
+                          sx={{ 
+                            backgroundColor: alpha(theme.palette.error.main, 0.1),
+                            '&:hover': {
+                              backgroundColor: alpha(theme.palette.error.main, 0.2),
+                            }
+                          }}
                         >
                           <Trash2 size={20} />
                         </IconButton>
@@ -513,8 +545,13 @@ const EmailSender = () => {
                     startIcon={<Plus size={20} />}
                     onClick={addRecipient}
                     variant="text"
-                    size="small"
-                    sx={styles.addRecipientButton}
+                    sx={{
+                      mt: 2,
+                      color: 'primary.main',
+                      '&:hover': {
+                        backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                      }
+                    }}
                   >
                     Add Recipient
                   </Button>
@@ -609,14 +646,10 @@ const EmailSender = () => {
 
                 {/* Message Content */}
                 <Box sx={styles.section}>
-                  <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                  <Typography variant="subtitle1">
                     Message Content
                   </Typography>
-                  <Box 
-                    sx={styles.messageContainer}
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                  >
+                  <Box sx={styles.messageContainer}>
                     <ReactQuill
                       ref={quillRef}
                       value={content}
@@ -672,30 +705,22 @@ const EmailSender = () => {
                   disabled={loading}
                   sx={styles.sendButton}
                 >
-                  {loading ? (
-                    <>
-                      <span className="animate-spin mr-2">⏳</span>
-                      Sending...
-                    </>
-                  ) : (
-                    'Send Email'
-                  )}
+                  {loading ? 'Sending...' : 'Send Email'}
                 </Button>
               </Box>
 
               {/* Right side - Live Preview */}
-              <Box sx={{ width: '45%' }}>
+              <Box sx={styles.rightSide}>
                 <Box sx={styles.previewContainer}>
-                  <Typography variant="subtitle1" gutterBottom fontWeight="medium">
+                  <Typography variant="subtitle1" gutterBottom>
                     Live Preview
                   </Typography>
                   
-                  {/* Email Preview Header */}
                   <Paper sx={{ p: 2, mb: 2 }}>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
+                    <Typography variant="body2" sx={{ mb: 1.5 }}>
                       <strong>To:</strong> {recipients.filter(validateEmail).join(', ')}
                     </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
+                    <Typography variant="body2" sx={{ mb: 1.5 }}>
                       <strong>Subject:</strong> {subject}
                     </Typography>
                     {attachments.length > 0 && (
@@ -705,7 +730,6 @@ const EmailSender = () => {
                     )}
                   </Paper>
 
-                  {/* Email Content Preview */}
                   <Box sx={{
                     backgroundColor: design.backgroundColor,
                     padding: design.padding,
@@ -718,14 +742,8 @@ const EmailSender = () => {
                       height: 'auto',
                       borderRadius: '4px',
                     },
-                    '& p': {
-                      margin: '0 0 1em 0'
-                    }
                   }}>
-                    <div 
-                      style={{ width: '100%', margin: '0 auto' }}
-                      dangerouslySetInnerHTML={{ __html: content }}
-                    />
+                    <div dangerouslySetInnerHTML={{ __html: content }} />
                   </Box>
                 </Box>
               </Box>

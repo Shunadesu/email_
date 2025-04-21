@@ -2,4 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bbb;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
 /* Ensure Tailwind is properly configured and imported */
