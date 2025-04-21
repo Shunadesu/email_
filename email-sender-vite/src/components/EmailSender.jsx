@@ -344,14 +344,20 @@ const EmailSender = () => {
     try {
       setLoading(true);
       setError(''); // Clear any previous errors
-      const apiUrl = new URL('/api/send-email', import.meta.env.VITE_API_URL).toString();
-      const response = await fetch(apiUrl, {
+      const response = await fetch('http://localhost:5000/api/send-email', {
         method: 'POST',
         body: formData,
         headers: {
-          'Accept': 'application/json'
-        }
+          'Accept': 'application/json',
+          'Origin': 'http://localhost:5173'
+        },
+        mode: 'cors'
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send email');
+      }
 
       const result = await response.json();
       

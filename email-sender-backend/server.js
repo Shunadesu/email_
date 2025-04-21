@@ -13,12 +13,23 @@ const app = express();
 
 // Enable CORS and JSON parsing
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type']
+  origin: 'http://localhost:5173',  // Allow only local development frontend
+  methods: ['POST', 'GET', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Accept', 'Origin'],
+  exposedHeaders: ['Access-Control-Allow-Origin'],
+  credentials: false
 }));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Add OPTIONS handler for the email endpoint
+app.options('/api/send-email', cors({
+  origin: ['https://email-fca1.vercel.app', 'http://localhost:5173'],
+  methods: ['POST', 'GET', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Accept', 'Origin'],
+  credentials: true
+}));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -52,12 +63,52 @@ const upload = multer({
 
 // Email sending endpoint
 app.post('/api/send-email', upload, async (req, res) => {
+  const uploadedFiles = [];
   try {
-    // Parse the emailData from the request
-    const emailData = JSON.parse(req.body.emailData);
+    console.log('Raw req.body:', req.body); // Log the raw body received
+
+    // Check if emailData field exists
+    if (!req.body.emailData) {
+      return res.status(400).json({ error: 'Missing emailData field in request body' });
+    }
+
+    // Parse emailData from JSON string
+    let emailData;
+    try {
+      emailData = JSON.parse(req.body.emailData);
+    } catch (parseError) {
+      console.error('Failed to parse emailData JSON:', parseError);
+      return res.status(400).json({ error: 'Invalid emailData format - failed to parse JSON', details: parseError.message });
+    }
+
+    console.log('Parsed emailData:', emailData); // Log the parsed object
+
+    // Track uploaded files (do this early)
+    if (req.files) {
+      uploadedFiles.push(...Object.values(req.files).flat());
+    }
+
+    // Validate parsed emailData content
+    if (!emailData.recipients || !Array.isArray(emailData.recipients) || emailData.recipients.length === 0 || !emailData.subject || !emailData.content) {
+      console.error('Validation failed:', { 
+        recipients: emailData.recipients, 
+        subject: emailData.subject, 
+        content: emailData.content 
+      });
+      return res.status(400).json({ 
+        error: 'Missing required fields in emailData',
+        details: {
+          recipients: (!emailData.recipients || !Array.isArray(emailData.recipients) || emailData.recipients.length === 0) ? 'Recipients array is required and cannot be empty' : null,
+          subject: !emailData.subject ? 'Subject is required' : null,
+          content: !emailData.content ? 'Email content is required' : null
+        }
+      });
+    }
+
+    // Destructure data *after* validation
     const { recipients, subject, content } = emailData;
     
-    // Get files from both fields
+    // Get files from req.files (multer populates this)
     const contentImages = req.files['contentImage'] || [];
     const attachments = req.files['attachment'] || [];
 
@@ -65,14 +116,6 @@ app.post('/api/send-email', upload, async (req, res) => {
       contentImages: contentImages.map(f => f.originalname),
       attachments: attachments.map(f => f.originalname)
     });
-
-    // Validate inputs
-    if (!recipients || !subject || !content) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields'
-      });
-    }
 
     // Parse recipients
     const emailList = Array.isArray(recipients) ? recipients : [recipients];
@@ -184,10 +227,10 @@ app.post('/api/send-email', upload, async (req, res) => {
       });
     }));
 
-    // Cleanup uploaded files
-    [...contentImages, ...attachments].forEach(file => {
+    // Clean up files after successful send
+    uploadedFiles.forEach(file => {
       fs.unlink(file.path, err => {
-        if (err) console.error('Error deleting file:', err);
+        if (err) console.error('Error deleting file after successful send:', err);
       });
     });
 
@@ -198,21 +241,19 @@ app.post('/api/send-email', upload, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error sending emails:', error);
+    console.error('Error sending email:', error);
     
-    // Cleanup any uploaded files in case of error
-    if (req.files) {
-      Object.values(req.files).flat().forEach(file => {
-        fs.unlink(file.path, err => {
-          if (err) console.error('Error deleting file:', err);
-        });
+    // Clean up files in case of error
+    uploadedFiles.forEach(file => {
+      fs.unlink(file.path, err => {
+        if (err) console.error('Error deleting file after error:', err);
       });
-    }
+    });
 
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send emails',
-      error: error.message
+    res.status(500).json({ 
+      error: 'Failed to send email',
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
