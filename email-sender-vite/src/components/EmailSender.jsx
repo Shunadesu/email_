@@ -344,7 +344,8 @@ const EmailSender = () => {
     try {
       setLoading(true);
       setError(''); // Clear any previous errors
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/send-email`, {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/api/send-email`, {
         method: 'POST',
         body: formData
       });
