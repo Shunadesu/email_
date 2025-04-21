@@ -21,7 +21,7 @@ import {
   useTheme,
   alpha
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import toast from 'react-hot-toast';
 
 const EmailSender = () => {
@@ -524,7 +524,7 @@ const EmailSender = () => {
                 {/* Design Customization Accordion */}
                 <Accordion sx={{ mb: 3 }}>
                   <AccordionSummary
-                    expandIcon={<ExpandMoreIcon />}
+                    expandIcon={<KeyboardArrowDownIcon />}
                     aria-controls="design-content"
                     id="design-header"
                   >
