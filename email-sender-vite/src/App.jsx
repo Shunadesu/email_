@@ -33,7 +33,7 @@ function App() {
     <ThemeProvider theme={theme}>
       <div style={{ 
         height: '100vh',
-        backgroundColor: '#f5f7fa',
+        backgroundColor: '#eaf6fb',
         padding: '1rem',
         overflow: 'hidden'
       }}>

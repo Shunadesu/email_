@@ -1,7 +1,7 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
-import { Send, Plus, Trash2, Image, Paperclip, File, Settings } from 'lucide-react';
+import { Send, Plus, Trash2, Image, Paperclip, File, Settings, ExternalLink, Moon, Sun } from 'lucide-react';
 import { 
   TextField, 
   Button, 
@@ -19,13 +19,19 @@ import {
   AccordionSummary,
   AccordionDetails,
   useTheme,
-  alpha
+  alpha,
+  CircularProgress,
+  Tooltip,
+  Alert,
+  Snackbar
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import toast from 'react-hot-toast';
+import dayjs from 'dayjs';
 
 const EmailSender = () => {
   const [recipients, setRecipients] = useState(['']);
+  const [cc, setCc] = useState(['']);
   const [subject, setSubject] = useState('');
   const [content, setContent] = useState('');
   const [contentImages, setContentImages] = useState([]);
@@ -38,6 +44,23 @@ const EmailSender = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isHtmlMode, setIsHtmlMode] = useState(false);
+  const [signature, setSignature] = useState(
+    `<div style="color:#f5a623; font-size:1.1em; font-weight:bold; margin-bottom:4px; text-align:left;">Lê Hà Minh Anh</div>
+    <div style="color:#f5a623; font-size:0.98em; font-weight:500; margin-bottom:7px; text-align:left;">Student K21<br>Faculty of Languages - International Cultures</div>
+    <div style="margin-bottom:7px; text-align:left;"><span style="color:#1976d2;">🌐</span> <a href="https://hoasen.edu.vn" style="color:#1976d2; text-decoration:none;">https://hoasen.edu.vn</a></div>
+    <div style="margin-bottom:7px; text-align:left;"><span style="color:#1976d2;">📍</span> 8 Nguyen Van Trang, Ben Thanh ward, Dist. 1, HCMC</div>
+    <div style="margin-top:10px; color:#f5a623; font-size:0.93em; padding-top:7px; text-align:left;">WORLD CLASS EDUCATION - DIVERSITY EMBRACE - ENTREPRENEURIAL SPIRIT</div>`
+  );
+  const [isSignatureHtmlMode, setIsSignatureHtmlMode] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isHtmlFullscreen, setIsHtmlFullscreen] = useState(false);
+  const [isSignatureHtmlFullscreen, setIsSignatureHtmlFullscreen] = useState(false);
 
   // Design customization
   const [design, setDesign] = useState({
@@ -47,17 +70,41 @@ const EmailSender = () => {
     borderColor: '#e0e0e0',
     borderWidth: '1px',
     borderStyle: 'solid',
-    fontFamily: 'Arial, sans-serif'
+    fontFamily: 'Arial, sans-serif',
+    lineHeight: '1.5',
+    maxWidth: '600px',
+    minHeight: '400px', // default
   });
 
   // Font options
   const fontOptions = [
-    'Arial, sans-serif',
     'Georgia, serif',
-    'Tahoma, sans-serif',
     'Times New Roman, serif',
+    'Arial, sans-serif',
+    'Tahoma, sans-serif',
     'Verdana, sans-serif',
-    'Courier New, monospace'
+    'Courier New, monospace',
+    'Playfair Display, serif',
+    'EB Garamond, serif',
+    'Merriweather, serif',
+    'Cormorant Garamond, serif',
+    'Abril Fatface, cursive',
+    'Lora, serif',
+    'Cinzel, serif',
+    'DM Serif Display, serif',
+    'Montserrat, sans-serif',
+    'Poppins, sans-serif',
+    'Raleway, sans-serif',
+    'Quicksand, sans-serif',
+    'Rubik, sans-serif',
+    'Fira Sans, sans-serif',
+    'Nunito, sans-serif',
+    'Oswald, sans-serif',
+    'Pacifico, cursive',
+    'Dancing Script, cursive',
+    'Great Vibes, cursive',
+    'Satisfy, cursive',
+    'Sacramento, cursive'
   ];
 
   // Border style options
@@ -68,28 +115,72 @@ const EmailSender = () => {
   // Custom styles for components
   const styles = {
     container: {
-      height: 'calc(100vh - 2rem)', // Trừ đi padding của container cha
+      height: 'calc(100vh - 2rem)',
       maxWidth: '1400px',
       margin: '0 auto',
+      background: isDarkMode ? '#181c23' : '#eaf6fb',
+      fontFamily: design.fontFamily,
+      padding: '1.5rem 0',
+      color: isDarkMode ? '#f5f5f5' : undefined,
     },
     paper: {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      borderRadius: theme.spacing(2),
+      borderRadius: 12,
       overflow: 'hidden',
-      boxShadow: theme.shadows[3],
+      background: isDarkMode ? '#23272f' : '#fff',
+      border: `1.5px solid ${isDarkMode ? '#374151' : '#90caf9'}`,
+      boxShadow: 'none',
+      color: isDarkMode ? '#f5f5f5' : undefined,
     },
     header: {
-      padding: theme.spacing(2, 4),
-      background: `linear-gradient(to right, ${alpha(theme.palette.primary.main, 0.05)}, ${alpha(theme.palette.primary.main, 0.1)})`,
-      borderBottom: `1px solid ${theme.palette.divider}`,
-      flexShrink: 0, // Prevent header from shrinking
+      padding: '28px 40px 18px 40px',
+      background: 'none',
+      borderBottom: `1.5px solid ${isDarkMode ? '#374151' : '#90caf9'}`,
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      fontFamily: design.fontFamily,
+      color: isDarkMode ? '#f5f5f5' : undefined,
+    },
+    headerTitle: {
+      fontFamily: design.fontFamily,
+      fontWeight: 700,
+      fontSize: '2.1rem',
+      letterSpacing: '0.5px',
+      color: isDarkMode ? '#90caf9' : '#1976d2',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 1.5,
+    },
+    headerDesc: {
+      fontFamily: design.fontFamily,
+      color: isDarkMode ? '#b3cde0' : '#1976d2',
+      fontWeight: 400,
+      fontSize: '1.05rem',
+      marginTop: 4,
+    },
+    clock: {
+      fontFamily: 'Fira Mono, monospace',
+      fontSize: '1.1rem',
+      color: isDarkMode ? '#90caf9' : '#1976d2',
+      background: isDarkMode ? '#23272f' : '#fff',
+      borderRadius: 6,
+      px: 2,
+      py: 0.5,
+      fontWeight: 700,
+      letterSpacing: '1.2px',
+      border: `1px solid ${isDarkMode ? '#374151' : '#90caf9'}`,
+      boxShadow: 'none',
     },
     content: {
-      padding: theme.spacing(3),
+      padding: 3,
       height: '100%',
-      overflow: 'hidden', // Hide overflow
+      overflow: 'hidden',
+      position: 'relative',
+      color: isDarkMode ? '#f5f5f5' : undefined,
     },
     mainContentWrapper: {
       display: 'flex',
@@ -100,14 +191,16 @@ const EmailSender = () => {
     leftSide: {
       flex: 1,
       minWidth: 0,
-      overflow: 'auto', // Enable scrolling
-      paddingRight: theme.spacing(2),
+      overflow: 'auto',
+      paddingRight: 2,
+      color: isDarkMode ? '#f5f5f5' : undefined,
     },
     rightSide: {
       width: '45%',
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
+      color: isDarkMode ? '#f5f5f5' : undefined,
     },
     section: {
       marginBottom: theme.spacing(3),
@@ -115,6 +208,9 @@ const EmailSender = () => {
         marginBottom: theme.spacing(1.5),
         color: theme.palette.text.primary,
         fontWeight: 600,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1,
       }
     },
     recipientContainer: {
@@ -122,9 +218,17 @@ const EmailSender = () => {
       gap: theme.spacing(1.5),
       alignItems: 'center',
       marginBottom: theme.spacing(1.5),
+      transition: 'all 0.2s ease',
+      '&:hover': {
+        transform: 'translateX(4px)',
+      }
     },
     addRecipientButton: {
       marginTop: theme.spacing(1),
+      transition: 'all 0.2s ease',
+      '&:hover': {
+        transform: 'translateY(-2px)',
+      }
     },
     designControls: {
       display: 'grid',
@@ -136,35 +240,101 @@ const EmailSender = () => {
       border: `1px solid ${theme.palette.divider}`,
       borderRadius: theme.shape.borderRadius,
       overflow: 'hidden',
+      transition: 'all 0.3s ease',
+      '&:hover': {
+        borderColor: theme.palette.primary.main,
+        boxShadow: `0 0 0 2px ${alpha(theme.palette.primary.main, 0.1)}`,
+      },
       '& .ql-container': {
-        height: '250px', // Fixed height for editor
+        height: '250px',
       }
     },
     previewContainer: {
       flex: 1,
       overflow: 'auto',
-      padding: theme.spacing(2),
-      backgroundColor: alpha(theme.palette.background.paper, 0.5),
-      borderRadius: theme.shape.borderRadius,
-      backdropFilter: 'blur(8px)',
-      border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+      padding: 3,
+      background: isDarkMode ? '#23272f' : '#fff',
+      borderRadius: 10,
+      border: `1.5px solid ${isDarkMode ? '#374151' : '#90caf9'}`,
+      boxShadow: 'none',
+      fontFamily: design.fontFamily,
+      marginTop: 8,
+      color: isDarkMode ? '#f5f5f5' : undefined,
     },
     attachmentChip: {
       margin: theme.spacing(0.5),
+      transition: 'all 0.2s ease',
+      '&:hover': {
+        transform: 'translateY(-2px)',
+        boxShadow: theme.shadows[2],
+      }
     },
     sendButton: {
-      marginTop: theme.spacing(4),
-      padding: theme.spacing(1.5, 4),
-      fontWeight: 600,
+      marginTop: 4,
+      padding: '12px 32px',
+      fontWeight: 700,
       fontSize: '1rem',
+      borderRadius: 6,
+      background: isDarkMode ? '#1976d2' : '#90caf9',
+      color: '#fff',
+      border: `1.5px solid ${isDarkMode ? '#1976d2' : '#90caf9'}`,
+      boxShadow: 'none',
+      '&:hover': {
+        background: isDarkMode ? '#1565c0' : '#42a5f5',
+        color: '#fff',
+        boxShadow: 'none',
+      },
+      '&.Mui-disabled': {
+        background: isDarkMode ? '#374151' : '#e3f2fd',
+        color: '#fff',
+        border: `1.5px solid ${isDarkMode ? '#374151' : '#e3f2fd'}`,
+      }
     },
+    loadingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: alpha(theme.palette.background.paper, 0.8),
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000,
+      backdropFilter: 'blur(4px)',
+    },
+    templateButton: {
+      borderRadius: 6,
+      background: isDarkMode ? '#23272f' : '#fff',
+      color: isDarkMode ? '#90caf9' : '#1976d2',
+      border: `1.2px solid ${isDarkMode ? '#374151' : '#90caf9'}`,
+      fontWeight: 600,
+      boxShadow: 'none',
+      '&:hover': {
+        background: isDarkMode ? '#181c23' : '#eaf6fb',
+        color: isDarkMode ? '#90caf9' : '#1976d2',
+        boxShadow: 'none',
+      }
+    },
+    signaturePreview: {
+      mt: 3,
+      pt: 3,
+      borderTop: `1px solid ${isDarkMode ? '#374151' : '#90caf9'}`,
+      backgroundColor: isDarkMode ? '#181c23' : '#fff',
+      fontFamily: design.fontFamily,
+      fontStyle: 'italic',
+      color: isDarkMode ? '#90caf9' : '#1976d2',
+      borderRadius: 6,
+      px: 2,
+      py: 1,
+    }
   };
 
   // Thêm custom styles cho Quill editor
   const customStyles = `
     .ql-editor {
       font-size: 16px;
-      line-height: 1.6;
+      line-height: ${design.lineHeight};
       padding: 20px;
     }
     
@@ -213,15 +383,11 @@ const EmailSender = () => {
         const reader = new FileReader();
         reader.onload = (e) => {
           const range = quillRef.current.getEditor().getSelection(true);
-          
-          // Insert the image using Quill's native insertEmbed
-          quillRef.current.getEditor().insertEmbed(
+          // Chèn ảnh với style max-width
+          quillRef.current.getEditor().clipboard.dangerouslyPasteHTML(
             range.index,
-            'image',
-            e.target.result
+            `<img src="${e.target.result}" style="max-width: 200px; height: auto; display: block; margin: 0 auto; border-radius: 8px;" />`
           );
-          
-          // Store the file for later sending
           setContentImages(prev => [...prev, {
             file,
             type: 'inline',
@@ -271,7 +437,27 @@ const EmailSender = () => {
     event.stopPropagation();
   };
 
-  // Quill modules configuration
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      // Ctrl/Cmd + Enter to send
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (!loading && subject && content) {
+          handleSubmit(e);
+        }
+      }
+      // Ctrl/Cmd + B to toggle HTML mode
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        handleToggleHtmlMode();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [loading, subject, content]);
+
+  // Enhanced Quill modules configuration
   const modules = useMemo(() => ({
     toolbar: {
       container: [
@@ -281,22 +467,32 @@ const EmailSender = () => {
         [{ 'align': [] }],
         [{ 'list': 'ordered'}, { 'list': 'bullet' }],
         ['link', 'image'],
-        ['clean']
+        ['clean'],
+        ['code-block'] // Add code block support
       ],
       handlers: {
         image: imageHandler
       }
+    },
+    clipboard: {
+      matchVisual: false // Prevent unwanted formatting
+    },
+    keyboard: {
+      bindings: {
+        tab: false // Disable tab key to prevent focus issues
+      }
     }
   }), []);
 
-  // Quill formats
+  // Enhanced Quill formats
   const formats = [
     'header',
     'bold', 'italic', 'underline', 'strike',
     'color', 'background',
     'align',
     'list', 'bullet',
-    'link', 'image'
+    'link', 'image',
+    'code-block'
   ];
 
   const validateEmail = (email) => {
@@ -357,6 +553,30 @@ const EmailSender = () => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleSnackbarClose = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  };
+
+  // Enhanced error handling
+  const handleError = (message) => {
+    setError(message);
+    setSnackbar({
+      open: true,
+      message,
+      severity: 'error'
+    });
+  };
+
+  const handleSuccess = (message) => {
+    setSuccess(message);
+    setSnackbar({
+      open: true,
+      message,
+      severity: 'success'
+    });
+  };
+
+  // Enhanced submit handler
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -364,59 +584,64 @@ const EmailSender = () => {
     const invalidEmails = recipients.filter(email => !validateEmail(email.trim()));
     
     if (invalidEmails.length > 0) {
-      setError(`Invalid email addresses: ${invalidEmails.join(', ')}`);
+      handleError(`Invalid email addresses: ${invalidEmails.join(', ')}`);
       return;
     }
 
-    // Create FormData
-    const formData = new FormData();
-    
-    // Add email data
-    const emailData = {
-      recipients: recipients.filter(email => email.trim() !== ''),
-      subject,
-      content: content,
-      design: {
-        backgroundColor: design.backgroundColor,
-        padding: design.padding,
-        borderWidth: design.borderWidth,
-        borderStyle: design.borderStyle,
-        borderColor: design.borderColor,
-        borderRadius: design.borderRadius,
-        maxWidth: '600px',
-        fontFamily: design.fontFamily
-      }
-    };
-
     // Validate required fields
-    if (emailData.recipients.length === 0) {
-      setError('Please add at least one recipient');
+    if (recipients.filter(email => email.trim() !== '').length === 0) {
+      handleError('Please add at least one recipient');
       return;
     }
     if (!subject) {
-      setError('Please enter a subject');
+      handleError('Please enter a subject');
       return;
     }
     if (!content) {
-      setError('Please enter some content');
+      handleError('Please enter some content');
       return;
     }
 
-    formData.append('emailData', JSON.stringify(emailData));
-
-    // Add content images (for inline display)
-    contentImages.forEach(item => {
-      formData.append('contentImage', item.file);
-    });
-
-    // Add attachments
-    attachments.forEach(item => {
-      formData.append('attachment', item.file);
-    });
+    setLoading(true);
+    setError('');
 
     try {
-      setLoading(true);
-      setError(''); // Clear any previous errors
+      // Create FormData
+      const formData = new FormData();
+      
+      // Add email data
+      const emailData = {
+        recipients: recipients.filter(email => email.trim() !== ''),
+        cc: cc.filter(email => email.trim() !== ''),
+        subject,
+        content: content,
+        signature: signature,
+        design: {
+          backgroundColor: design.backgroundColor,
+          padding: design.padding || '20px',
+          borderWidth: design.borderWidth,
+          borderStyle: design.borderStyle,
+          borderColor: design.borderColor,
+          borderRadius: design.borderRadius,
+          maxWidth: design.maxWidth || '600px',
+          fontFamily: design.fontFamily,
+          lineHeight: design.lineHeight,
+          minHeight: design.minHeight || '400px',
+        }
+      };
+
+      formData.append('emailData', JSON.stringify(emailData));
+
+      // Add content images (for inline display)
+      contentImages.forEach(item => {
+        formData.append('contentImage', item.file);
+      });
+
+      // Add attachments
+      attachments.forEach(item => {
+        formData.append('attachment', item.file);
+      });
+
       const response = await fetch('http://localhost:5000/api/send-email', {
         method: 'POST',
         body: formData,
@@ -435,20 +660,22 @@ const EmailSender = () => {
       const result = await response.json();
       
       if (result.success) {
-        setSuccess('Email sent successfully!');
+        handleSuccess('Email sent successfully!');
         // Clear form
         setRecipients(['']);
         setSubject('');
         setContent('');
         setContentImages([]);
         setAttachments([]);
-        quillRef.current.getEditor().setContents([]);
+        if (quillRef.current && quillRef.current.getEditor) {
+          quillRef.current.getEditor().setContents([]);
+        }
       } else {
-        setError(result.message || 'Failed to send email');
+        handleError(result.message || 'Failed to send email');
       }
     } catch (error) {
       console.error('Error sending email:', error);
-      setError('Failed to send email. Please try again.');
+      handleError('Failed to send email. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -483,6 +710,144 @@ const EmailSender = () => {
     </Box>
   );
 
+  // Hàm đơn giản để format HTML (indent)
+  function formatHtml(html) {
+    let tab = '';
+    return html
+      .replace(/</g, '\n<')
+      .replace(/\n\s*\n/g, '\n')
+      .split('\n')
+      .map(line => {
+        if (line.match(/<\//)) tab = tab.substring(2);
+        const result = tab + line;
+        if (line.match(/<[^!/][^>]*[^/]>/) && !line.includes('</')) tab += '  ';
+        return result;
+      })
+      .join('\n')
+      .trim();
+  }
+
+  // Khi chuyển sang chế độ HTML, tự động format mã HTML
+  const handleToggleHtmlMode = () => {
+    setIsHtmlMode((prev) => {
+      if (!prev) {
+        setContent(formatHtml(content));
+      }
+      return !prev;
+    });
+  };
+
+  // Card template HTML
+  const cardTemplate = `
+<div style="display: flex; flex-direction: column; max-width: 600px; margin: 0 auto; background: #fff; border-radius: 16px; padding: 20px; font-family: Arial, sans-serif; box-sizing: border-box;">
+  <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 20px;">
+    <div style=" min-width: 120px; max-width: 180px; height: 300px; text-align: center; margin-right: 20px;">
+      <div style="min-width: 100px; max-width: 170px; margin: 0 auto 12px auto;">
+        <img src="https://lh7-rt.googleusercontent.com/docsz/AD_4nXdnlIlswnP4mYd_CGv0sHpauYlH2eYz8imP_sSKgNzzd_vR8JLJCWFnKEBx38O7VR_trgYneKfwKcOyf9CI_yxQXu1k1h39_vQldax1hOdPr5rgIjhNkWbbZmkN1k-a-PGm1-nKHQ?key=zZgczEilgkhQFQm83e7rAg" alt="HOA SEN UNIVERSITY" style="width: 100%; height: auto; object-fit: contain;" />
+      </div>
+      <div style="max-width: 70px; height: 70px; margin: 12px auto 0 auto;">
+        <img src="https://lh7-rt.googleusercontent.com/docsz/AD_4nXc9fxzOW6Z0fPBKhweV9JnRe-wxN6C36Sdhvg4IeGf2QFVmEr1WQpwhZ4BZt3nEonrLX2b5vH0pxvdil1NFY95vZdykaU2T4mVMvdaBwqD8jVymfAxf8RGEOOK81GYum1k43luaBw?key=zZgczEilgkhQFQm83e7rAg" alt="QR Code" style="width: 100%; height: auto; object-fit: contain;" />
+      </div>
+    </div>
+    
+    <div>
+      <div style="border-left: 2px dashed #e0e0e0; padding-left: 16px;">
+        <div style="color: #f5a623; font-size: clamp(1rem, 2vw, 1.1em); font-weight: bold;">Lê Hà Minh Anh</div>
+        <div style="color: #f5a623; font-size: clamp(0.9rem, 1.8vw, 0.98em); font-weight: 500;">Student K21<br>Faculty of Languages - International Cultures</div>
+        <div style="margin-bottom: 2px;">
+          <a href="https://hoasen.edu.vn" style="color: #1976d2; text-decoration: none; word-break: break-word;"><span style="color: #1976d2;">🌐</span>https://hoasen.edu.vn</a>
+        </div>
+        <div style="margin-bottom: 2px;">
+          <a href="https://hoasen.edu.vn" style="color: #1976d2; text-decoration: none; word-break: break-word;"><span style="color: #1976d2;">📍</span>8 Nguyen Van Trang, Ben Thanh ward, Dist. 1, HCMC</a>  
+        </div>
+        <div style="margin-top: 12px; border-top: 1px dotted #f5a623; padding: 8px 0; border-bottom: 1px dotted #f5a623; color: #f5a623; font-size: clamp(0.85rem, 1.7vw, 0.95em); text-align: center;">
+          WORLD CLASS EDUCATION - DIVERSITY EMBRACE - ENTREPRENEURIAL SPIRIT
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+  // Hàm chèn template vào vị trí con trỏ
+  const handleInsertCardTemplate = () => {
+    if (isHtmlMode) {
+      // Chèn vào vị trí con trỏ trong textarea
+      const textarea = document.querySelector('textarea');
+      if (textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const before = content.slice(0, start);
+        const after = content.slice(end);
+        const newContent = before + cardTemplate + after;
+        setContent(newContent);
+        // Đặt lại vị trí con trỏ sau khi chèn
+        setTimeout(() => {
+          textarea.focus();
+          textarea.selectionStart = textarea.selectionEnd = start + cardTemplate.length;
+        }, 0);
+      } else {
+        setContent(content + cardTemplate);
+      }
+    } else {
+      // Chèn vào vị trí con trỏ trong ReactQuill
+      const editor = quillRef.current && quillRef.current.getEditor();
+      if (editor) {
+        const range = editor.getSelection(true);
+        editor.clipboard.dangerouslyPasteHTML(range ? range.index : editor.getLength(), cardTemplate);
+      }
+    }
+  };
+
+  // Thêm ref cho signature quill
+  const sigQuillRef = useRef(null);
+
+  // Các template mẫu
+  const templates = [
+    {
+      label: 'Thư mời hợp tác',
+      value: `<p>Kính gửi [Tên đối tác],</p><p>Chúng tôi rất hân hạnh được mời Quý đối tác tham gia hợp tác cùng [Tên tổ chức] trong dự án [Tên dự án].</p><p>...</p><p>Trân trọng,<br>[Tên bạn]</p>`
+    },
+    {
+      label: 'Thư cảm ơn',
+      value: `<p>Kính gửi [Tên người nhận],</p><p>Chúng tôi xin chân thành cảm ơn Quý vị đã đồng hành cùng [Tên tổ chức] trong thời gian qua.</p><p>...</p><p>Trân trọng,<br>[Tên bạn]</p>`
+    },
+    {
+      label: 'Thư mời sự kiện',
+      value: `<p>Kính gửi [Tên khách mời],</p><p>Chúng tôi trân trọng kính mời Quý vị tham dự sự kiện [Tên sự kiện] được tổ chức vào [Thời gian] tại [Địa điểm].</p><p>...</p><p>Trân trọng,<br>[Tên bạn]</p>`
+    },
+    {
+      label: 'Overview (có khung & hình)',
+      value: `<div style="border:2px solid #1976d2; border-radius:12px; padding:24px; max-width:700px; margin:24px auto; background:#f9f9f9;">
+  <div style="text-align:center; margin-bottom:20px;">
+    <img src="https://upload.wikimedia.org/wikipedia/vi/2/2e/Logo_Hoa_Sen_University.png" alt="Logo" style="height:60px;" />
+  </div>
+  <h2 style="color:#1976d2; text-align:center; margin-bottom:16px;">THƯ MỜI HỢP TÁC</h2>
+  <p>Kính gửi <b>[Tên đối tác]</b>,</p>
+  <p>Chúng tôi rất hân hạnh được mời Quý đối tác tham gia hợp tác cùng <b>[Tên tổ chức]</b> trong dự án <b>[Tên dự án]</b>.</p>
+  <ul style="margin:16px 0 16px 24px;">
+    <li><b>Thời gian:</b> [Thời gian]</li>
+    <li><b>Địa điểm:</b> [Địa điểm]</li>
+    <li><b>Nội dung chính:</b> [Tóm tắt nội dung]</li>
+  </ul>
+  <p>Rất mong nhận được sự quan tâm và phản hồi từ Quý đối tác.</p>
+  <div style="margin-top:24px; text-align:right;">
+    <span style="color:#f5a623; font-weight:bold;">Trân trọng,<br>[Tên bạn]</span>
+  </div>
+</div>`
+    }
+  ];
+
+  const [currentTime, setCurrentTime] = useState(dayjs().format('HH:mm:ss'));
+
+  // Cập nhật đồng hồ mỗi giây
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(dayjs().format('HH:mm:ss'));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <>
       <style>{customStyles}</style>
@@ -490,12 +855,77 @@ const EmailSender = () => {
         <Paper sx={styles.paper}>
           {/* Header */}
           <Box sx={styles.header}>
-            <Typography variant="h5" gutterBottom>
-              Email Composer
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Create and send professional emails with our advanced editor
-            </Typography>
+            <Box>
+              <Typography variant="h5" gutterBottom sx={styles.headerTitle}>
+                <span style={{fontSize: '1.5em', marginRight: 8}}>✉️</span> Email Composer
+              </Typography>
+              <Typography variant="body2" sx={styles.headerDesc}>
+                Create and send professional emails with our vintage editor
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={styles.clock}>{currentTime}</Box>
+              <Button
+                variant="outlined"
+                startIcon={<Settings size={20} />}
+                onClick={() => {
+                  const accordion = document.getElementById('design-header');
+                  if (accordion) {
+                    accordion.click();
+                  }
+                }}
+                sx={styles.templateButton}
+              >
+                Quick Design
+              </Button>
+              <IconButton
+                onClick={() => setIsDarkMode((prev) => !prev)}
+                sx={{ ml: 1, color: isDarkMode ? '#90caf9' : '#1976d2' }}
+                aria-label="Toggle dark mode"
+              >
+                {isDarkMode ? <Sun size={22} /> : <Moon size={22} />}
+              </IconButton>
+            </Box>
+          </Box>
+
+          {/* Error/Success Snackbar */}
+          <Snackbar
+            open={snackbar.open}
+            autoHideDuration={6000}
+            onClose={handleSnackbarClose}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            <Alert
+              onClose={handleSnackbarClose}
+              severity={snackbar.severity}
+              variant="filled"
+              sx={{ width: '100%' }}
+            >
+              {snackbar.message}
+            </Alert>
+          </Snackbar>
+
+          {/* Keyboard Shortcuts Help */}
+          <Box sx={{ 
+            position: 'absolute', 
+            top: theme.spacing(2), 
+            right: theme.spacing(2), 
+            zIndex: 1 
+          }}>
+            <Tooltip title="Keyboard Shortcuts">
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => {
+                  toast('⌘/Ctrl + Enter: Send email\n⌘/Ctrl + B: Toggle HTML mode', {
+                    duration: 4000,
+                    position: 'top-center',
+                  });
+                }}
+              >
+                ⌨️ Shortcuts
+              </Button>
+            </Tooltip>
           </Box>
 
           {/* Main Content */}
@@ -526,35 +956,93 @@ const EmailSender = () => {
                         }}
                       />
                       {recipients.length > 1 && (
-                        <IconButton 
-                          color="error" 
-                          onClick={() => removeRecipient(index)}
-                          sx={{ 
-                            backgroundColor: alpha(theme.palette.error.main, 0.1),
-                            '&:hover': {
-                              backgroundColor: alpha(theme.palette.error.main, 0.2),
-                            }
-                          }}
-                        >
-                          <Trash2 size={20} />
-                        </IconButton>
+                        <Tooltip title="Remove recipient">
+                          <IconButton 
+                            color="error" 
+                            onClick={() => removeRecipient(index)}
+                            sx={{ 
+                              backgroundColor: alpha(theme.palette.error.main, 0.1),
+                              '&:hover': {
+                                backgroundColor: alpha(theme.palette.error.main, 0.2),
+                              }
+                            }}
+                          >
+                            <Trash2 size={20} />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </Box>
                   ))}
-                  <Button
-                    startIcon={<Plus size={20} />}
-                    onClick={addRecipient}
-                    variant="text"
-                    sx={{
-                      mt: 2,
-                      color: 'primary.main',
-                      '&:hover': {
-                        backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                      }
-                    }}
-                  >
-                    Add Recipient
-                  </Button>
+                  <Tooltip title="Add another recipient">
+                    <Button
+                      startIcon={<Plus size={20} />}
+                      onClick={addRecipient}
+                      variant="text"
+                      sx={styles.addRecipientButton}
+                    >
+                      Add Recipient
+                    </Button>
+                  </Tooltip>
+                </Box>
+
+                {/* CC Section */}
+                <Box sx={styles.section}>
+                  <Typography variant="subtitle1">
+                    CC
+                  </Typography>
+                  {cc.map((email, index) => (
+                    <Box key={index} sx={styles.recipientContainer}>
+                      <TextField
+                        fullWidth
+                        size="medium"
+                        type="email"
+                        value={email}
+                        onChange={(e) => {
+                          const newCc = [...cc];
+                          newCc[index] = e.target.value;
+                          setCc(newCc);
+                        }}
+                        error={email && !validateEmail(email)}
+                        helperText={email && !validateEmail(email) ? 'Invalid email format' : ''}
+                        placeholder="cc@example.com"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            backgroundColor: 'background.paper',
+                          }
+                        }}
+                      />
+                      {cc.length > 1 && (
+                        <Tooltip title="Remove CC recipient">
+                          <IconButton 
+                            color="error" 
+                            onClick={() => {
+                              if (cc.length > 1) {
+                                setCc(cc.filter((_, i) => i !== index));
+                              }
+                            }}
+                            sx={{ 
+                              backgroundColor: alpha(theme.palette.error.main, 0.1),
+                              '&:hover': {
+                                backgroundColor: alpha(theme.palette.error.main, 0.2),
+                              }
+                            }}
+                          >
+                            <Trash2 size={20} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Box>
+                  ))}
+                  <Tooltip title="Add CC recipient">
+                    <Button
+                      startIcon={<Plus size={20} />}
+                      onClick={() => setCc([...cc, ''])}
+                      variant="text"
+                      sx={styles.addRecipientButton}
+                    >
+                      Add CC
+                    </Button>
+                  </Tooltip>
                 </Box>
 
                 {/* Subject */}
@@ -640,6 +1128,46 @@ const EmailSender = () => {
                           ))}
                         </Select>
                       </FormControl>
+                      <TextField
+                        label="Line Height"
+                        type="number"
+                        value={parseFloat(design.lineHeight)}
+                        onChange={(e) => handleDesignChange('lineHeight', e.target.value)}
+                        size="small"
+                        inputProps={{ 
+                          min: 1,
+                          max: 3,
+                          step: 0.1
+                        }}
+                        helperText="1.0 - 3.0"
+                      />
+                      <TextField
+                        label="Max Width"
+                        type="number"
+                        value={parseInt(design.maxWidth || 600)}
+                        onChange={(e) => handleDesignChange('maxWidth', `${e.target.value}px`)}
+                        size="small"
+                        inputProps={{ min: 300, max: 1400 }}
+                        helperText="px"
+                      />
+                      <TextField
+                        label="Padding"
+                        type="number"
+                        value={parseInt(design.padding || 20)}
+                        onChange={(e) => handleDesignChange('padding', `${e.target.value}px`)}
+                        size="small"
+                        inputProps={{ min: 0, max: 100 }}
+                        helperText="px"
+                      />
+                      <TextField
+                        label="Min Height"
+                        type="number"
+                        value={parseInt(design.minHeight || 400)}
+                        onChange={e => handleDesignChange('minHeight', `${e.target.value}px`)}
+                        size="small"
+                        inputProps={{ min: 200, max: 1200 }}
+                        helperText="px"
+                      />
                     </Box>
                   </AccordionDetails>
                 </Accordion>
@@ -649,16 +1177,109 @@ const EmailSender = () => {
                   <Typography variant="subtitle1">
                     Message Content
                   </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1, gap: 1 }}>
+                    <FormControl size="small" sx={{ minWidth: 180 }}>
+                      <Select
+                        displayEmpty
+                        value={''}
+                        onChange={e => {
+                          if (!isHtmlMode) {
+                            toast.error('Please switch to HTML mode to insert templates');
+                            return;
+                          }
+                          const template = templates.find(t => t.value === e.target.value);
+                          if (template) {
+                            setContent(template.value);
+                            toast.success('Template inserted successfully');
+                          }
+                        }}
+                        renderValue={() => 'Choose Template'}
+                      >
+                        <MenuItem disabled value="">
+                          <em>Choose Template</em>
+                        </MenuItem>
+                        {templates.map((tpl, idx) => (
+                          <MenuItem key={idx} value={tpl.value}>{tpl.label}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={handleToggleHtmlMode}
+                      sx={styles.templateButton}
+                    >
+                      {isHtmlMode ? 'Switch to Editor' : 'Switch to HTML'}
+                    </Button>
+                  </Box>
+                  {isHtmlMode && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 1 }}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        sx={styles.templateButton}
+                        onClick={() => setContent(formatHtml(content))}
+                      >
+                        Format HTML
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        sx={styles.templateButton}
+                        onClick={() => setIsHtmlFullscreen(true)}
+                      >
+                        Expand
+                      </Button>
+                    </Box>
+                  )}
                   <Box sx={styles.messageContainer}>
-                    <ReactQuill
-                      ref={quillRef}
-                      value={content}
-                      onChange={setContent}
-                      modules={modules}
-                      formats={formats}
-                      theme="snow"
-                      placeholder="Write your message here..."
-                    />
+                    {isHtmlMode ? (
+                      <>
+                        <textarea
+                          style={{
+                            width: isHtmlFullscreen ? '100vw' : '100%',
+                            minHeight: isHtmlFullscreen ? '80vh' : 200,
+                            fontFamily: 'monospace',
+                            fontSize: 14,
+                            padding: 12,
+                            border: 'none',
+                            outline: 'none',
+                            resize: 'vertical',
+                            background: '#fafafa',
+                            zIndex: isHtmlFullscreen ? 1300 : 'auto',
+                            position: isHtmlFullscreen ? 'fixed' : 'relative',
+                            top: isHtmlFullscreen ? 0 : 'auto',
+                            left: isHtmlFullscreen ? 0 : 'auto',
+                            right: isHtmlFullscreen ? 0 : 'auto',
+                            bottom: isHtmlFullscreen ? 0 : 'auto',
+                            margin: isHtmlFullscreen ? 0 : undefined,
+                          }}
+                          value={content}
+                          onChange={e => setContent(e.target.value)}
+                          placeholder="Nhập mã HTML tại đây..."
+                        />
+                        {isHtmlFullscreen && (
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            sx={{ position: 'fixed', top: 24, right: 32, zIndex: 1400 }}
+                            onClick={() => setIsHtmlFullscreen(false)}
+                          >
+                            Close
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <ReactQuill
+                        ref={quillRef}
+                        value={content}
+                        onChange={setContent}
+                        modules={modules}
+                        formats={formats}
+                        theme="snow"
+                        placeholder="Write your message here..."
+                      />
+                    )}
                   </Box>
                 </Box>
 
@@ -669,23 +1290,26 @@ const EmailSender = () => {
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                     {attachments.map((item, index) => (
-                      <Chip
-                        key={index}
-                        icon={<File size={16} />}
-                        label={`${item.name} (${(item.file.size / 1024).toFixed(1)}KB)`}
-                        onDelete={() => removeAttachment(index)}
-                        sx={styles.attachmentChip}
-                      />
+                      <Tooltip key={index} title={`${item.name} (${(item.file.size / 1024).toFixed(1)}KB)`}>
+                        <Chip
+                          icon={<File size={16} />}
+                          label={`${item.name} (${(item.file.size / 1024).toFixed(1)}KB)`}
+                          onDelete={() => removeAttachment(index)}
+                          sx={styles.attachmentChip}
+                        />
+                      </Tooltip>
                     ))}
                   </Box>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Paperclip size={20} />}
-                    onClick={() => attachmentInputRef.current?.click()}
-                    size="small"
-                  >
-                    Add Attachments
-                  </Button>
+                  <Tooltip title="Add files to your email">
+                    <Button
+                      variant="outlined"
+                      startIcon={<Paperclip size={20} />}
+                      onClick={() => attachmentInputRef.current?.click()}
+                      size="small"
+                    >
+                      Add Attachments
+                    </Button>
+                  </Tooltip>
                   <input
                     type="file"
                     ref={attachmentInputRef}
@@ -695,34 +1319,222 @@ const EmailSender = () => {
                   />
                 </Box>
 
+                {/* Signature Content */}
+                <Box sx={styles.section}>
+                  <Typography variant="subtitle1">
+                    Signature
+                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1, gap: 1 }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => setIsSignatureHtmlMode((prev) => !prev)}
+                      sx={styles.templateButton}
+                    >
+                      {isSignatureHtmlMode ? 'Switch to Editor' : 'Switch to HTML'}
+                    </Button>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      color="secondary"
+                      onClick={() => {
+                        if (!isSignatureHtmlMode) {
+                          toast.error('Please switch to HTML mode to insert card template');
+                          return;
+                        }
+                        // Chèn vào vị trí con trỏ trong textarea signature
+                        const textarea = document.getElementById('signature-html-textarea');
+                        if (textarea) {
+                          const start = textarea.selectionStart;
+                          const end = textarea.selectionEnd;
+                          const before = signature.slice(0, start);
+                          const after = signature.slice(end);
+                          const newContent = before + cardTemplate + after;
+                          setSignature(newContent);
+                          setTimeout(() => {
+                            textarea.focus();
+                            textarea.selectionStart = textarea.selectionEnd = start + cardTemplate.length;
+                          }, 0);
+                        } else {
+                          setSignature(signature + cardTemplate);
+                        }
+                      }}
+                      sx={styles.templateButton}
+                    >
+                      Insert Card Template
+                    </Button>
+                  </Box>
+                  {isSignatureHtmlMode && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mb: 1 }}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        sx={styles.templateButton}
+                        onClick={() => setSignature(formatHtml(signature))}
+                      >
+                        Format HTML
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        sx={styles.templateButton}
+                        onClick={() => setIsSignatureHtmlFullscreen(true)}
+                      >
+                        Expand
+                      </Button>
+                    </Box>
+                  )}
+                  {isSignatureHtmlMode ? (
+                    <>
+                      <textarea
+                        id="signature-html-textarea"
+                        style={{
+                          width: isSignatureHtmlFullscreen ? '100vw' : '100%',
+                          minHeight: isSignatureHtmlFullscreen ? '80vh' : 220,
+                          fontFamily: 'monospace',
+                          fontSize: 14,
+                          padding: 16,
+                          border: '1px solid #e0e0e0',
+                          borderRadius: 8,
+                          background: '#fafafa',
+                          marginTop: 8,
+                          zIndex: isSignatureHtmlFullscreen ? 1300 : 'auto',
+                          position: isSignatureHtmlFullscreen ? 'fixed' : 'relative',
+                          top: isSignatureHtmlFullscreen ? 0 : 'auto',
+                          left: isSignatureHtmlFullscreen ? 0 : 'auto',
+                          right: isSignatureHtmlFullscreen ? 0 : 'auto',
+                          bottom: isSignatureHtmlFullscreen ? 0 : 'auto',
+                        }}
+                        value={signature}
+                        onChange={e => setSignature(e.target.value)}
+                        placeholder="Enter signature HTML here..."
+                      />
+                      {isSignatureHtmlFullscreen && (
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          sx={{ position: 'fixed', top: 24, right: 32, zIndex: 1400 }}
+                          onClick={() => setIsSignatureHtmlFullscreen(false)}
+                        >
+                          Close
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="signature-quill">
+                      <ReactQuill
+                        ref={sigQuillRef}
+                        value={signature}
+                        onChange={setSignature}
+                        modules={modules}
+                        formats={formats}
+                        theme="snow"
+                        placeholder="Enter signature here..."
+                        style={{ minHeight: 220, marginTop: 8, background: '#fafafa', borderRadius: 8, padding: 8 }}
+                      />
+                    </div>
+                  )}
+                </Box>
+
                 {/* Send Button */}
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="primary"
-                  startIcon={loading ? null : <Send size={20} />}
-                  onClick={handleSubmit}
-                  disabled={loading}
-                  sx={styles.sendButton}
-                >
-                  {loading ? 'Sending...' : 'Send Email'}
-                </Button>
+                <Tooltip title={!subject || !content ? "Please fill in all required fields" : "Send your email"}>
+                  <span>
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      color="primary"
+                      startIcon={loading ? null : <Send size={20} />}
+                      onClick={handleSubmit}
+                      disabled={loading || !subject || !content}
+                      sx={styles.sendButton}
+                    >
+                      {loading ? 'Sending...' : 'Send Email'}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Box>
 
               {/* Right side - Live Preview */}
               <Box sx={styles.rightSide}>
                 <Box sx={styles.previewContainer}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Live Preview
+                  <Typography variant="subtitle1" gutterBottom sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between' 
+                  }}>
+                    <span>Live Preview</span>
+                    <Tooltip title="Preview in new tab">
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          const previewWindow = window.open('', '_blank');
+                          previewWindow.document.write(`
+                            <html>
+                              <head>
+                                <title>Email Preview</title>
+                                <style>
+                                  body { 
+                                    font-family: ${design.fontFamily};
+                                    line-height: ${design.lineHeight};
+                                    margin: 0;
+                                    padding: 20px;
+                                    background: #f5f5f5;
+                                  }
+                                  .email-container {
+                                    max-width: ${design.maxWidth};
+                                    margin: 0 auto;
+                                    background: ${design.backgroundColor};
+                                    padding: ${design.padding};
+                                    border: ${design.borderWidth} ${design.borderStyle} ${design.borderColor};
+                                    border-radius: ${design.borderRadius};
+                                  }
+                                  .signature-container {
+                                    margin-top: 20px;
+                                    padding-top: 20px;
+                                    border-top: 1px solid #e0e0e0;
+                                  }
+                                  img { max-width: 100%; height: auto; }
+                                </style>
+                              </head>
+                              <body>
+                                <div class="email-container">
+                                  ${content}
+                                  <div class="signature-container">
+                                    ${signature}
+                                  </div>
+                                </div>
+                                <div style="margin-top: 20px; text-align: center; color: #666;">
+                                  <small>This is a preview of how your email will look.</small>
+                                </div>
+                              </body>
+                            </html>
+                          `);
+                        }}
+                      >
+                        <ExternalLink size={16} />
+                      </IconButton>
+                    </Tooltip>
                   </Typography>
                   
-                  <Paper sx={{ p: 2, mb: 2 }}>
+                  <Paper sx={{ 
+                    p: 2, 
+                    mb: 2,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      boxShadow: theme.shadows[4],
+                    }
+                  }}>
                     <Typography variant="body2" sx={{ mb: 1.5 }}>
                       <strong>To:</strong> {recipients.filter(validateEmail).join(', ')}
                     </Typography>
                     <Typography variant="body2" sx={{ mb: 1.5 }}>
                       <strong>Subject:</strong> {subject}
                     </Typography>
+                    {cc.filter(email => email.trim() !== '').length > 0 && (
+                      <Typography variant="body2" sx={{ mb: 1.5 }}>
+                        <strong>CC:</strong> {cc.filter(validateEmail).join(', ')}
+                      </Typography>
+                    )}
                     {attachments.length > 0 && (
                       <Typography variant="body2">
                         <strong>Attachments:</strong> {attachments.length} files
@@ -730,13 +1542,19 @@ const EmailSender = () => {
                     )}
                   </Paper>
 
+                  {/* Main Content with Signature */}
                   <Box sx={{
                     backgroundColor: design.backgroundColor,
                     padding: design.padding,
                     border: `${design.borderWidth} ${design.borderStyle} ${design.borderColor}`,
                     borderRadius: design.borderRadius,
-                    minHeight: '200px',
+                    minHeight: design.minHeight || '400px',
                     fontFamily: design.fontFamily,
+                    lineHeight: design.lineHeight,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      boxShadow: theme.shadows[4],
+                    },
                     '& img': {
                       maxWidth: '100%',
                       height: 'auto',
@@ -744,6 +1562,14 @@ const EmailSender = () => {
                     },
                   }}>
                     <div dangerouslySetInnerHTML={{ __html: content }} />
+                    <Box sx={{
+                      mt: 3,
+                      pt: 3,
+                      borderTop: '1px solid #e0e0e0',
+                      backgroundColor: '#fff',
+                    }}>
+                      <div dangerouslySetInnerHTML={{ __html: signature }} />
+                    </Box>
                   </Box>
                 </Box>
               </Box>

@@ -1,5 +1,4 @@
 // server.js - Complete backend for sending emails with images and HTML formatting
-
 const express = require('express');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
@@ -12,24 +11,37 @@ require('dotenv').config();
 const app = express();
 
 // Enable CORS and JSON parsing
-app.use(cors({
-  origin: 'http://localhost:5173',  // Allow only local development frontend
+const allowedOrigins = [
+  'http://localhost:5173',  // Local development
+  'https://email-sender-vite.vercel.app', // Your frontend Vercel domain
+  'https://email-fca1.vercel.app'
+];
+
+const corsOptions = {
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      console.log('Blocked origin:', origin); // For debugging
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
   methods: ['POST', 'GET', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Accept', 'Origin'],
   exposedHeaders: ['Access-Control-Allow-Origin'],
-  credentials: false
-}));
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Add OPTIONS handler for the email endpoint
-app.options('/api/send-email', cors({
-  origin: ['https://email-fca1.vercel.app', 'http://localhost:5173'],
-  methods: ['POST', 'GET', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Accept', 'Origin'],
-  credentials: true
-}));
+app.options('/api/send-email', cors(corsOptions));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -81,9 +93,21 @@ app.post('/api/send-email', upload, async (req, res) => {
       return res.status(400).json({ error: 'Invalid emailData format - failed to parse JSON', details: parseError.message });
     }
 
-    console.log('Parsed emailData:', emailData); // Log the parsed object
+    // Nếu signature là undefined hoặc rỗng, thử lấy lại từ raw req.body.emailData
+    let signature = emailData.signature;
+    if (!signature && req.body.emailData) {
+      try {
+        const raw = req.body.emailData;
+        const match = raw.match(/"signature":\s*"([\s\S]*?)",\s*"design"/);
+        if (match && match[1]) {
+          signature = match[1].replace(/\\n/g, '').replace(/\\+/g, '');
+        }
+      } catch (e) {}
+    }
 
-    // Track uploaded files (do this early)
+    console.log('Parsed emailData:', emailData);
+
+    // Track uploaded files
     if (req.files) {
       uploadedFiles.push(...Object.values(req.files).flat());
     }
@@ -105,8 +129,8 @@ app.post('/api/send-email', upload, async (req, res) => {
       });
     }
 
-    // Destructure data *after* validation
-    const { recipients, subject, content } = emailData;
+    // Destructure data after validation
+    const { recipients, cc, subject, content } = emailData;
     
     // Get files from req.files (multer populates this)
     const contentImages = req.files['contentImage'] || [];
@@ -119,6 +143,10 @@ app.post('/api/send-email', upload, async (req, res) => {
 
     // Parse recipients
     const emailList = Array.isArray(recipients) ? recipients : [recipients];
+
+    // Xử lý cc: loại bỏ email rỗng, trim, và nối thành chuỗi nếu cần
+    let ccList = Array.isArray(cc) ? cc.map(e => e.trim()).filter(e => e) : [];
+    if (ccList.length === 0) ccList = undefined;
 
     // Create email transporter
     const transporter = nodemailer.createTransport({
@@ -160,7 +188,7 @@ app.post('/api/send-email', upload, async (req, res) => {
       if (index < contentImages.length) {
         const file = contentImages[index];
         const cid = cidMap.get(file.originalname);
-        // Replace the entire img tag while preserving other attributes and wrap with custom class
+        // Replace the entire img tag while preserving other attributes
         modifiedContent = modifiedContent.replace(
           imgTag,
           `<div class="email-image-container" style="margin: 10px 0; text-align: center;">
@@ -173,51 +201,40 @@ app.post('/api/send-email', upload, async (req, res) => {
       }
     });
 
+    // Get design from emailData
+    const design = emailData.design || {};
+    const borderColor = design.borderColor || '#0099FF';
+    const borderWidth = design.borderWidth || '3px';
+    const borderStyle = design.borderStyle || 'solid';
+    const maxWidth = design.maxWidth || '600px';
+    const padding = design.padding || '20px';
+    const lineHeight = design.lineHeight || '1.5';
+
     // Add base styling for the email content
     const styledContent = `
       <div style="
-        max-width: ${emailData.design?.maxWidth || '600px'};
         margin: 0 auto;
-        background-color: ${emailData.design?.backgroundColor || '#ffffff'};
-        padding: ${emailData.design?.padding || '20px'};
-        border: ${emailData.design?.borderWidth || '1px'} ${emailData.design?.borderStyle || 'solid'} ${emailData.design?.borderColor || '#e0e0e0'};
-        border-radius: ${emailData.design?.borderRadius || '8px'};
-        font-family: ${emailData.design?.fontFamily || 'Arial, sans-serif'};
-        line-height: 1.5;
-        color: #333;
+        background: #fff;
+        border-radius: 12px;
+        border: ${borderWidth} ${borderStyle} ${borderColor};
+        padding: ${padding};
+        max-width: ${maxWidth};
+        line-height: ${lineHeight};
+        font-family: Arial, sans-serif;
       ">
-        <style>
-          .email-image-container {
-            margin: 10px 0;
-            text-align: start;
-            width: 100%;
-            position: relative;
-          }
-          .email-image-container img {
-            width: 100%;
-            height: auto;
-            object-fit: contain;
-            display: block;
-          }
-        </style>
         <div style="width: 80%; margin: 0 auto;">
           ${modifiedContent}
         </div>
       </div>
+      ${signature ? `<div style="width: 100%">${signature}</div>` : ''}
     `;
-
-    // Log for debugging
-    console.log('Sending email with:', {
-      contentImages: inlineAttachments.map(a => a.filename),
-      attachments: fileAttachments.map(a => a.filename),
-      cidMap: Object.fromEntries(cidMap)
-    });
 
     // Send emails
     const results = await Promise.all(emailList.map(email => {
       return transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: email,
+        cc: ccList ? ccList.join(',') : undefined,
         subject,
         html: styledContent,
         attachments: [
@@ -234,16 +251,20 @@ app.post('/api/send-email', upload, async (req, res) => {
       });
     });
 
-    res.json({
-      success: true,
-      message: `Emails sent successfully to ${emailList.length} recipients`,
-      results: results.map(r => r.messageId)
+    res.json({ 
+      success: true, 
+      message: `Email sent successfully to ${emailList.length} recipient(s)`,
+      results: results.map(r => ({ 
+        messageId: r.messageId,
+        accepted: r.accepted,
+        rejected: r.rejected
+      }))
     });
 
   } catch (error) {
     console.error('Error sending email:', error);
-    
-    // Clean up files in case of error
+
+    // Clean up files on error
     uploadedFiles.forEach(file => {
       fs.unlink(file.path, err => {
         if (err) console.error('Error deleting file after error:', err);
@@ -251,20 +272,19 @@ app.post('/api/send-email', upload, async (req, res) => {
     });
 
     res.status(500).json({ 
-      error: 'Failed to send email',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: 'Failed to send email', 
+      details: error.message 
     });
   }
 });
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Make sure to set up your email configuration in the .env file!`);
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-
-
-
+// Start server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+}); 
