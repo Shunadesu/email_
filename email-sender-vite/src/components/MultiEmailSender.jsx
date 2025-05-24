@@ -162,18 +162,23 @@ const MultiEmailSender = () => {
       formData.append('embedImages', embedImages.toString());
       formData.append('htmlFormat', 'true'); // Always send as HTML since we're using a rich text editor
       
-      // Send the request to your backend
-      const response = await fetch('http://localhost:5000/api/send-emails', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/send-emails`, {
         method: 'POST',
         body: formData,
+        headers: {
+          'Accept': 'application/json',
+          'Origin': window.location.origin
+        },
         // Don't set Content-Type header here as the browser will set it with the boundary parameter for FormData
       });
       
-      const result = await response.json();
-      
       if (!response.ok) {
-        throw new Error(result.message || 'Failed to send emails');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send emails');
       }
+      
+      const result = await response.json();
       
       // Success
       setSent(true);

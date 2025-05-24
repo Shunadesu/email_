@@ -13,8 +13,8 @@ const app = express();
 // Enable CORS and JSON parsing
 const allowedOrigins = [
   'http://localhost:5173',  // Local development
-  'https://email-sender-vite.vercel.app', // Your frontend Vercel domain
-  'https://email-fca1.vercel.app'
+  'https://email-fca1.vercel.app/', // Your frontend Vercel domain
+//   'https://email-fca1.vercel.app'
 ];
 
 const corsOptions = {
